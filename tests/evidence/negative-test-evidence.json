@@ -1,0 +1,33 @@
+{
+  "tool": "secgate/1.0",
+  "repository": "secgate-acceptance-test",
+  "remote": "",
+  "range": "cfb1e7891e3eed13e311680abe36d95f2e7e072f..d5aa2bbf207fb49671af76668a52b5fd9bb0cb9a",
+  "head_commit": "d5aa2bbf207fb49671af76668a52b5fd9bb0cb9a",
+  "reviewed_at": "2026-08-25T12:23:49Z",
+  "development_model": "claude",
+  "review_model": "codex",
+  "checks_performed": [
+    "data_leakage",
+    "injection",
+    "redirect_ssrf",
+    "validation"
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "critical",
+      "category": "redirect_ssrf",
+      "location": "app/api/report/route.js:GET",
+      "title": "Server-side fetch of a caller-controlled URL",
+      "rationale": "The source parameter reaches fetch unvalidated, so the server can be made to request internal addresses.",
+      "remediation": "Resolve the target against an allowlist of permitted hosts before fetching.",
+      "review_model": "codex",
+      "development_model": "claude",
+      "fingerprint": "redirect_ssrf:app/api/report/route.js:GET",
+      "disposition": "open",
+      "acceptance": null
+    }
+  ],
+  "decision": "fail"
+}

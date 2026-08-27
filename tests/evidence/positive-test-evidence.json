@@ -1,0 +1,34 @@
+{
+  "tool": "secgate/1.0",
+  "repository": "secgate-acceptance-test",
+  "remote": "",
+  "range": "cfb1e7891e3eed13e311680abe36d95f2e7e072f..8e02838470a6379ec547a3b94385dee2785160ab",
+  "head_commit": "8e02838470a6379ec547a3b94385dee2785160ab",
+  "reviewed_at": "2026-08-25T12:23:49Z",
+  "development_model": "claude",
+  "review_model": "codex",
+  "checks_performed": [
+    "configuration",
+    "data_leakage",
+    "injection",
+    "redirect_ssrf",
+    "validation"
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "low",
+      "category": "validation",
+      "location": "app/api/report/route.js:GET",
+      "title": "No timeout on the upstream fetch",
+      "rationale": "A slow upstream can hold the handler open.",
+      "remediation": "Pass an AbortSignal with a timeout.",
+      "review_model": "codex",
+      "development_model": "claude",
+      "fingerprint": "validation:app/api/report/route.js:GET",
+      "disposition": "open",
+      "acceptance": null
+    }
+  ],
+  "decision": "pass"
+}

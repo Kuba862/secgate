@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# secgate pre-push hook. Installed by secgate/install.sh - do not edit here.
+# Set SECGATE_HOME if you move the tool.
+set -uo pipefail
+SECGATE_HOME="${SECGATE_HOME:-__SECGATE_HOME__}"
+GATE="$SECGATE_HOME/sec-review.sh"
+
+if [ ! -x "$GATE" ]; then
+  echo "secgate: control not found at $GATE" >&2
+  echo "secgate: FAILING CLOSED - push refused." >&2
+  exit 1
+fi
+exec "$GATE" --hook
