@@ -2,7 +2,7 @@
 
 A local gate that runs on `git push`. It sends the exact diff being pushed to
 the **opposite** model, refuses the push while any unaccepted critical or high
-finding stands, and writes a sanitized evidence record you can commit.
+finding stands, and records a sanitized evidence note on the reviewed commit.
 
 Claude wrote the code → Codex reviews it. Codex wrote it → Claude reviews it.
 
@@ -17,11 +17,12 @@ brew install jq
 ~/Desktop/agents/secgate/install.sh /path/to/repo [/path/to/another ...]
 ```
 
-This writes `.git/hooks/pre-push`, creates `.security-reviews/` and seeds an
-empty `accepted.json`. An existing pre-push hook is backed up to
-`pre-push.pre-secgate.bak`.
+This writes `.git/hooks/pre-push`, creates `.security-reviews/`, seeds an empty
+`accepted.json`, and configures the repo to fetch and display the evidence
+notes ref. An existing pre-push hook is backed up to `pre-push.pre-secgate.bak`.
 
-Commit `.security-reviews/` — the records are meant to be shared.
+Commit `.security-reviews/accepted.json` — it is an **input** to the gate and
+belongs under review. Evidence records are not files; see *What gets recorded*.
 
 ---
 
@@ -96,7 +97,8 @@ You get the findings, then a refusal. Two legitimate ways forward.
 
 ## What gets recorded
 
-`.security-reviews/<UTC-timestamp>-<short-sha>.json`, metadata only:
+A git note on the reviewed commit, on `refs/notes/security-reviews`, metadata
+only:
 
 repository, remote, range, head commit, timestamp, development model, review
 model, checks performed, findings with severity and disposition, and the
@@ -107,9 +109,30 @@ written.** The reviewer prompt forbids quoting code; findings point at
 `file:symbol`. Diffs live in a `mktemp` directory outside the worktree and are
 deleted when the run ends.
 
-The record is produced *during* pre-push, so it is not inside the commits
-being pushed — it lands one push behind. Commit it with your next change. The
-alternative, amending commits from a hook, is worse.
+Read one back:
+
+```bash
+git log --notes=refs/notes/security-reviews -1 <sha>
+git notes --ref=refs/notes/security-reviews show <sha> | jq .
+```
+
+The note is pushed to `origin` on its own ref as part of the same run, best
+effort: a note that reached `.git` is already the record, and a remote that
+refuses the ref does not turn a passing review into a refused push. A
+notes-only push is skipped by the gate, so publishing evidence never re-enters
+the gate that produced it.
+
+**Why a note and not a file.** The record is produced *during* pre-push, so a
+file could never be inside the commits being pushed — it would land one push
+behind, leave the worktree dirty after every run (including refused pushes,
+which also produce a record), and carry a `head_commit` pointing at the parent
+of the commit that finally contained it. A dirty worktree is not cosmetic here:
+agents are expected to start on a clean repo. Amending commits from a hook is
+worse than either. A note is written to `.git`, binds to the exact SHA that was
+reviewed, and never touches the working tree.
+
+Records written before this change stay where they were, in
+`.security-reviews/*.json`, as an archive. Nothing reads them.
 
 ---
 
@@ -169,6 +192,8 @@ skipping a review and makes skipping visible in the evidence trail, but it
 cannot prevent a determined bypass.
 
 Real enforcement belongs on the server: a GitHub Actions job that, for each
-pushed SHA, looks for an evidence record with `decision: "pass"` covering that
-commit and fails the check when there is none. That is the natural phase two
-and is tracked as a rollout gap in `COVERAGE.md`.
+pushed SHA, fetches `refs/notes/security-reviews` and fails the check unless a
+note with `decision: "pass"` is attached to that commit. Notes make this
+straightforward — the record is bound to the SHA rather than sitting in a file
+one commit later. That is the natural phase two and is tracked as a rollout gap
+in `COVERAGE.md`.

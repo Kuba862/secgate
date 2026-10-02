@@ -17,14 +17,16 @@
 #   SEC_REVIEWER_CMD=<cmd>       override the reviewer (testing); receives the
 #                                prompt on stdin and must print JSON on stdout
 #   SEC_MAX_DIFF_BYTES=<n>       fail closed above this size (default 400000)
-#   SEC_CLAUDE_MODEL=<name>      default claude-fable-5
+#   SEC_CLAUDE_MODEL=<name>      default claude-opus-5
+#   SEC_NOTES_REF=<ref>          evidence notes ref (default
+#                                refs/notes/security-reviews)
 #
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROMPT_FILE="$SCRIPT_DIR/prompts/security.md"
 MAX_DIFF_BYTES="${SEC_MAX_DIFF_BYTES:-400000}"
-CLAUDE_MODEL="${SEC_CLAUDE_MODEL:-claude-fable-5}"
+CLAUDE_MODEL="${SEC_CLAUDE_MODEL:-claude-opus-5}"
 BLOCKING_SEVERITIES='["critical","high"]'
 
 die()  { printf 'secgate: %s\n' "$1" >&2; exit 2; }
@@ -40,6 +42,7 @@ REPO_NAME="$(basename "$REPO_ROOT")"
 REMOTE_URL="$(git remote get-url origin 2>/dev/null || echo "")"
 EVIDENCE_DIR="$REPO_ROOT/.security-reviews"
 ACCEPTED_FILE="$EVIDENCE_DIR/accepted.json"
+NOTES_REF="${SEC_NOTES_REF:-refs/notes/security-reviews}"
 
 # ---------------------------------------------------------------- arguments
 MODE=""; RANGE=""; RECORD_ONLY=0
@@ -80,6 +83,9 @@ case "$MODE" in
     while read -r _local_ref local_sha _remote_ref remote_sha; do
       [ -z "${local_sha:-}" ] && continue
       [ "$local_sha" = "$ZERO" ] && continue          # branch deletion
+      # evidence notes carry no code and must never re-enter the gate that
+      # produced them; a notes-only push has nothing to review.
+      case "$_local_ref" in refs/notes/*) continue ;; esac
       base=""
       if [ "$remote_sha" = "$ZERO" ]; then
         # new branch upstream: only what is not already on any remote.
@@ -170,12 +176,25 @@ run_reviewer() {                       # run_reviewer <reviewer> <outfile>
   case "$reviewer" in
     claude)
       command -v claude >/dev/null || { warn "claude CLI not found"; return 127; }
-      claude -p "$prompt" --model "$CLAUDE_MODEL" --allowedTools Read,Grep,Glob > "$out" 2>/dev/null ;;
+      claude -p "$prompt" --model "$CLAUDE_MODEL" --allowedTools Read,Grep,Glob > "$out" 2>"$out.err" ;;
     codex)
       command -v codex >/dev/null || { warn "codex CLI not found"; return 127; }
-      codex exec --sandbox read-only "$prompt" > "$out" 2>/dev/null ;;
+      codex exec --sandbox read-only "$prompt" > "$out" 2>"$out.err" ;;
     *) return 2 ;;
   esac
+}
+
+# a reviewer CLI can refuse before it ever reads the prompt - an unavailable
+# model, an expired login, an empty credit balance. Those reasons arrive on
+# stdout or stderr and are worthless to the developer if the gate eats them.
+reviewer_failure_detail() {            # reviewer_failure_detail <rawfile>
+  local raw="$1" src line
+  for src in "$raw.err" "$raw"; do
+    [ -s "$src" ] || continue
+    while IFS= read -r line; do
+      [ -n "$line" ] && warn "  ${line}"
+    done < <(grep -v '^[[:space:]]*$' "$src" | tail -n 3)
+  done
 }
 
 # pull the first well-formed JSON object out of whatever the model printed.
@@ -286,10 +305,16 @@ TOTAL="$(jq 'length' "$TMPDIR_SG/disposed.json")"
 if [ "$BLOCKING" -gt 0 ]; then DECISION="fail"; else DECISION="pass"; fi
 
 # ------------------------------------------------ write the evidence record
-mkdir -p "$EVIDENCE_DIR"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+#
+# The record is a git note on the reviewed commit, not a file in the worktree.
+# A file cannot work here: the record is produced during pre-push, so it can
+# only ever be committed one push later, which leaves the worktree dirty after
+# every run and points head_commit at the parent of the commit that carries it.
+# A note is written to .git, lands on the exact SHA that was reviewed, and
+# travels to the remote on its own ref.
 SHORT="$(git rev-parse --short "${HEAD_SHA:-HEAD}" 2>/dev/null || echo unknown)"
-RECORD="$EVIDENCE_DIR/${STAMP}-${SHORT}.json"
+NOTE_SHA="$(git rev-parse --verify --quiet "${HEAD_SHA:-HEAD}^{commit}" 2>/dev/null || true)"
+RECORD="$TMPDIR_SG/record.json"
 
 jq -n \
   --arg repository "$REPO_NAME" \
@@ -309,6 +334,19 @@ jq -n \
     checks_performed:$checks[0], findings:$findings[0], decision:$decision}' \
   > "$RECORD" || die "failed to write evidence record"
 
+[ -n "$NOTE_SHA" ] || die "cannot resolve the reviewed commit - no record possible"
+
+git notes --ref="$NOTES_REF" add -f -F "$RECORD" "$NOTE_SHA" >/dev/null 2>&1 \
+  || die "failed to attach the evidence note to ${SHORT}"
+EVIDENCE_AT="${NOTES_REF} @ ${SHORT}"
+
+# publishing is best effort: a note that reached .git is already the record,
+# and a remote that refuses it must not turn a passing review into a refusal.
+if [ -n "$REMOTE_URL" ]; then
+  git push --no-verify --quiet origin "${NOTES_REF}:${NOTES_REF}" >/dev/null 2>&1 \
+    || warn "evidence note kept locally - publishing to origin failed"
+fi
+
 # ------------------------------------------------------------- report
 printf '\n' >&2
 info "repository : $REPO_NAME"
@@ -316,7 +354,7 @@ info "range      : $RANGE"
 info "developed  : $(printf '%s' "$DEV_MODELS" | tr '\n' ',' | sed 's/,$//')"
 info "reviewed by: ${REVIEWERS_RUN[*]}"
 info "findings   : $TOTAL total, $SUPPRESSED accepted, $BLOCKING blocking"
-info "evidence   : ${RECORD#"$REPO_ROOT"/}"
+info "evidence   : $EVIDENCE_AT"
 
 if [ "$TOTAL" -gt 0 ]; then
   printf '\n' >&2
@@ -334,5 +372,5 @@ if [ "$DECISION" = "fail" ]; then
 fi
 
 info "PASS - no unresolved critical or high findings."
-info "Commit ${RECORD#"$REPO_ROOT"/} with your next change."
+info "Read it back with: git log --notes=${NOTES_REF} -1 ${SHORT}"
 exit 0

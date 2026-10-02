@@ -6,7 +6,7 @@ Regenerate the inventory with:
 
 ## Covered
 
-| Repository | Hook installed | First evidence record |
+| Repository | Hook installed | First evidence note (commit) |
 |---|---|---|
 | `citizengo-ultra-monorepo` | ☐ | |
 | `data-campaign-copilot` | ☐ | |

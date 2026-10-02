@@ -64,7 +64,7 @@ S
 fi
 run_gate "$WORK/stub-fail.sh"; NEG=$?
 echo ">>> exit $NEG (expected 1 - push blocked)"
-cp "$(ls -t .security-reviews/*.json | grep -v accepted | head -1)" "$OUT/negative-test-evidence.json" 2>/dev/null
+git notes --ref=refs/notes/security-reviews show HEAD > "$OUT/negative-test-evidence.json" 2>/dev/null
 
 # ---- the remediated change ------------------------------------------------
 cat > app/api/report/route.js <<'FIXED'
@@ -104,7 +104,7 @@ S
 fi
 run_gate "$WORK/stub-pass.sh"; POS=$?
 echo ">>> exit $POS (expected 0 - push allowed)"
-cp "$(ls -t .security-reviews/*.json | grep -v accepted | head -1)" "$OUT/positive-test-evidence.json" 2>/dev/null
+git notes --ref=refs/notes/security-reviews show HEAD > "$OUT/positive-test-evidence.json" 2>/dev/null
 
 echo
 echo "=============================================================="

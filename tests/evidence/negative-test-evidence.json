@@ -2,9 +2,9 @@
   "tool": "secgate/1.0",
   "repository": "secgate-acceptance-test",
   "remote": "",
-  "range": "cfb1e7891e3eed13e311680abe36d95f2e7e072f..d5aa2bbf207fb49671af76668a52b5fd9bb0cb9a",
-  "head_commit": "d5aa2bbf207fb49671af76668a52b5fd9bb0cb9a",
-  "reviewed_at": "2026-08-25T12:23:49Z",
+  "range": "9ec267f060df9dfee680ed2560f925e5ff9b5092..c8f948953736ed0e221ee0b48a5df6cd2b43ceb5",
+  "head_commit": "c8f948953736ed0e221ee0b48a5df6cd2b43ceb5",
+  "reviewed_at": "2026-08-27T09:54:57Z",
   "development_model": "claude",
   "review_model": "codex",
   "checks_performed": [

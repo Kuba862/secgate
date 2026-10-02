@@ -42,12 +42,14 @@ Tool, kept once, installed into many repos:
   COVERAGE.md            which repos are covered, what is not  [required evidence]
 ```
 
-Per covered repo, committed:
+Per covered repo:
 
 ```
 <repo>/.security-reviews/
-  accepted.json          accepted false positives, with justification
-  2026-08-27TournalT09-14-02Z-a1b2c3d.json   one evidence record per review
+  accepted.json          accepted false positives, with justification (committed)
+<repo> refs/notes/security-reviews
+  one evidence record per review, attached to the reviewed commit, pushed to
+  origin on its own ref - never a file in the worktree
 ```
 
 Diffs and reviewer transcripts are written to `mktemp -d` **outside the
